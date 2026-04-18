@@ -131,10 +131,9 @@ export default function HomeClient({ initialProfile }: Props) {
           Track your taste, discover shows
         </h1>
         <p className="max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-          Describe how you like to dance and what you chase on lineups. The app queries Ticketmaster,
-          SeatGeek, Bandsintown, plus electronic-first Edmtrain data and an optional Songkick Bay Area
-          calendar, merges duplicates, and ranks what lines up with your profile—including dates and
-          price hints when APIs expose them.
+          Describe how you like to dance and what you chase on lineups. The app scrapes public Eventbrite
+          discover pages (structured data embedded in HTML), merges duplicates, and ranks what lines up
+          with your profile—including dates and ticket prices when listings include them.
         </p>
       </header>
 
@@ -208,14 +207,12 @@ export default function HomeClient({ initialProfile }: Props) {
         <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-6 dark:border-zinc-800 dark:bg-zinc-900/40">
           <h2 className="text-lg font-semibold">Recommendations</h2>
           <p className="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-            Wire up API keys in <code className="rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800">.env.local</code>{" "}
-            (<span className="whitespace-nowrap">TICKETMASTER_API_KEY</span>,{" "}
-            <span className="whitespace-nowrap">SEATGEEK_CLIENT_ID</span>,{" "}
-            <span className="whitespace-nowrap">BANDSINTOWN_APP_ID</span>,{" "}
-            <span className="whitespace-nowrap">EDMTRAIN_CLIENT</span>,{" "}
-            <span className="whitespace-nowrap">SONGKICK_API_KEY</span>). Without keys you will see hints
-            instead of remote results. Set home city to San Francisco to unlock Edmtrain&apos;s SF bundle,
-            Songkick metro 26330, and extra keyword passes for local warehouses and clubs.
+            No API keys: recommendations come from <strong>scraping</strong> Eventbrite HTML. If a page returns empty
+            results or blocks the request, warnings list what failed. Optional{" "}
+            <code className="rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800">SCRAPE_USER_AGENT</code>{" "}
+            in <code className="rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800">.env.local</code> can
+            help with picky CDNs. Set home city to <strong>San Francisco</strong> to add Bay Area browse
+            paths plus dedicated Eventbrite pages for local clubs.
           </p>
           <button
             type="button"

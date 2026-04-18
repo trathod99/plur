@@ -1,17 +1,22 @@
-/** San Francisco club / warehouse names for keyword search (Ticketmaster / SeatGeek). */
-export const SAN_FRANCISCO_EDM_VENUE_KEYWORDS = [
-  "Public Works",
-  "Halcyon",
-  "The Midway",
-  "1015 Folsom",
-  "August Hall",
-  "Great Northern",
-  "DNA Lounge",
-  "Audio Nightclub",
-  "Temple San Francisco",
-  "F8",
-  "Monarch",
-  "The Midway SF",
+/**
+ * Eventbrite venue URL slugs under `/d/ca--san-francisco/{slug}/events/`
+ * (HTML pages with JSON-LD ItemList).
+ */
+export const SAN_FRANCISCO_EVENTBRITE_VENUE_SLUGS = [
+  "public-works",
+  "halcyon-sf",
+  "1015-folsom",
+  "the-midway-sf",
+  "august-hall-sf",
+  "great-northern-sf",
+  "dna-lounge",
+  "audio-sf",
+  "temple-sf",
+  "monarch-sf",
+  "f8-bar",
+  "rickshaw-stop",
+  "the-fillmore-sf",
+  "bill-graham-civic-auditorium",
 ] as const;
 
 /** Substrings matched against `venue` (case-insensitive) for a small local boost in scoring. */
@@ -33,8 +38,6 @@ export const SAN_FRANCISCO_VENUE_HINTS = [
   "rickshaw stop",
   "knockout",
 ] as const;
-
-export const SONGKICK_SF_METRO_AREA_ID = 26330;
 
 export function isSanFranciscoProfile(city?: string): boolean {
   if (!city) return false;

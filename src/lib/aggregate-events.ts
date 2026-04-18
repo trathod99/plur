@@ -1,19 +1,11 @@
 import type { EventFetchWarning, NormalizedEvent, TasteProfile } from "./types";
 import { scoreEventAgainstProfile } from "./match";
-import { fetchBandsintownForArtist } from "./sources/bandsintown";
-import {
-  fetchEdmtrainEventsForProfile,
-  fetchEdmtrainSanFranciscoEvents,
-  resolveEdmtrainSanFranciscoLocationId,
-} from "./sources/edmtrain";
-import { fetchSeatGeekEvents } from "./sources/seatgeek";
-import { fetchSongkickMetroEvents } from "./sources/songkick";
-import { fetchTicketmasterEvents } from "./sources/ticketmaster";
+import { scrapeEventbriteDiscoverPage } from "./scrape/eventbrite-ld";
+import { eventbritePlaceSegmentsForProfile } from "./scrape/place-slugs";
 import {
   isSanFranciscoProfile,
   profileMentionsEdm,
-  SAN_FRANCISCO_EDM_VENUE_KEYWORDS,
-  SONGKICK_SF_METRO_AREA_ID,
+  SAN_FRANCISCO_EVENTBRITE_VENUE_SLUGS,
   textLooksElectronic,
 } from "./sf-edm";
 
@@ -61,9 +53,12 @@ function mergeEvents(lists: NormalizedEvent[][]): NormalizedEvent[] {
   return [...map.values()];
 }
 
-function isVenueKeywordQuery(q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  return SAN_FRANCISCO_EDM_VENUE_KEYWORDS.some((v) => v.toLowerCase() === needle);
+function slugifyKeyword(q: string): string {
+  return q
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
@@ -73,8 +68,9 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   const warnings: EventFetchWarning[] = [];
   const chunks: NormalizedEvent[][] = [];
 
-  const country = profile.country?.trim() || "US";
   const cityQ = profile.city?.trim();
+  const segments = eventbritePlaceSegmentsForProfile(profile);
+  const sf = isSanFranciscoProfile(cityQ);
 
   const queries = new Set<string>();
   for (const a of profile.favoriteArtists) {
@@ -88,99 +84,70 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   const narr = profile.narrative.trim();
   if (narr.length >= 3) queries.add(narr.slice(0, 80));
 
-  if (queries.size === 0 && cityQ) queries.add(`${cityQ} concert`);
+  if (queries.size === 0 && cityQ) queries.add(`${cityQ} music`);
 
   if (queries.size === 0) {
-    return { events: [], warnings: [] };
-  }
-
-  if (isSanFranciscoProfile(cityQ)) {
-    for (const v of SAN_FRANCISCO_EDM_VENUE_KEYWORDS) queries.add(v);
-  }
-
-  const edmtrainClient = process.env.EDMTRAIN_CLIENT?.trim();
-  if (edmtrainClient) {
-    if (isSanFranciscoProfile(cityQ)) {
-      const locId = await resolveEdmtrainSanFranciscoLocationId(edmtrainClient);
-      if (locId == null) {
-        warnings.push({
-          source: "edmtrain",
-          message: "Could not resolve San Francisco location id (check EDMTRAIN_SF_LOCATION_ID).",
-        });
-      } else {
-        const sf = await fetchEdmtrainSanFranciscoEvents({
-          client: edmtrainClient,
-          locationId: locId,
-        });
-        if (sf.warning) warnings.push(sf.warning);
-        chunks.push(sf.events);
-      }
-    }
-
-    const edmtrainQueries = [...queries]
-      .filter((q) => q.trim().length >= 3 && !isVenueKeywordQuery(q))
-      .slice(0, 4);
-
-    for (const q of edmtrainQueries) {
-      const et = await fetchEdmtrainEventsForProfile({ client: edmtrainClient, eventName: q });
-      if (et.warning) warnings.push(et.warning);
-      chunks.push(et.events);
-    }
-  } else if (profileMentionsEdm(profile)) {
     warnings.push({
-      source: "edmtrain",
+      source: "eventbrite",
       message:
-        "Set EDMTRAIN_CLIENT (from edmtrain.com/developer-api) for electronic-focused listings and optional SF venue bundles.",
+        "Add favorite artists, genres, or notes so we can build Eventbrite search URLs to scrape.",
     });
+    return { events: [], warnings };
   }
 
-  const songkickKey = process.env.SONGKICK_API_KEY?.trim();
-  if (songkickKey && isSanFranciscoProfile(cityQ)) {
-    const sk = await fetchSongkickMetroEvents({
-      metroAreaId: SONGKICK_SF_METRO_AREA_ID,
-      apiKey: songkickKey,
-      maxPages: 2,
+  const segmentList =
+    segments.length > 0 ? segments : (profileMentionsEdm(profile) ? ["united-states"] : []);
+
+  if (!segmentList.length) {
+    warnings.push({
+      source: "eventbrite",
+      message:
+        "Set home city (e.g. San Francisco) or mention electronic genres in your taste so we can pick a regional Eventbrite browse path to scrape.",
     });
-    if (sk.warning) warnings.push(sk.warning);
-    const skEvents =
-      profileMentionsEdm(profile) && sk.events.length
-        ? sk.events.filter((e) =>
-            textLooksElectronic([e.title, ...(e.lineup ?? [])].join(" ")),
-          )
-        : sk.events;
-    if (profileMentionsEdm(profile) && sk.events.length && !skEvents.length) {
+    return { events: [], warnings };
+  }
+
+  for (const seg of segmentList) {
+    const music = await scrapeEventbriteDiscoverPage({
+      url: `https://www.eventbrite.com/d/${seg}/music--events/`,
+      sourceLabel: `${seg}-music`,
+    });
+    if (music.warning) warnings.push(music.warning);
+    const rows =
+      profileMentionsEdm(profile) && music.events.length
+        ? music.events.filter((e) => textLooksElectronic([e.title, e.venue ?? ""].join(" ")))
+        : music.events;
+    if (profileMentionsEdm(profile) && music.events.length && !rows.length) {
       warnings.push({
-        source: "songkick",
-        message:
-          "Songkick metro results were filtered to electronic cues from your taste; broaden genres or narrative if this removed everything.",
+        source: "eventbrite",
+        message: `${seg}-music: all rows were filtered out as non-electronic; broaden your taste cues.`,
       });
     }
-    chunks.push(skEvents);
-  } else if (isSanFranciscoProfile(cityQ) && profileMentionsEdm(profile)) {
-    warnings.push({
-      source: "songkick",
-      message:
-        "Set SONGKICK_API_KEY to pull the broader Bay Area calendar (metro 26330) alongside club-specific searches.",
-    });
+    chunks.push(rows);
   }
 
-  for (const q of [...queries].slice(0, 8)) {
-    const tm = await fetchTicketmasterEvents({
-      keyword: q,
-      countryCode: country,
-      size: 25,
-    });
-    if (tm.warning) warnings.push(tm.warning);
-    chunks.push(tm.events);
+  if (sf) {
+    for (const slug of SAN_FRANCISCO_EVENTBRITE_VENUE_SLUGS) {
+      const page = await scrapeEventbriteDiscoverPage({
+        url: `https://www.eventbrite.com/d/ca--san-francisco/${slug}/events/`,
+        sourceLabel: `sf-venue-${slug}`,
+      });
+      if (page.warning) warnings.push(page.warning);
+      chunks.push(page.events);
+    }
+  }
 
-    const sg = await fetchSeatGeekEvents({ q, perPage: 25 });
-    if (sg.warning) warnings.push(sg.warning);
-    chunks.push(sg.events);
-
-    if (!isVenueKeywordQuery(q)) {
-      const bit = await fetchBandsintownForArtist(q);
-      if (bit.warning) warnings.push(bit.warning);
-      chunks.push(bit.events);
+  const keywordSegments = segmentList.slice(0, 3);
+  for (const q of [...queries].slice(0, 6)) {
+    const slug = slugifyKeyword(q);
+    if (slug.length < 2) continue;
+    for (const seg of keywordSegments) {
+      const page = await scrapeEventbriteDiscoverPage({
+        url: `https://www.eventbrite.com/d/${seg}/${encodeURIComponent(slug)}/events/`,
+        sourceLabel: `${seg}-q-${slug}`,
+      });
+      if (page.warning) warnings.push(page.warning);
+      chunks.push(page.events);
     }
   }
 

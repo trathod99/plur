@@ -1,8 +1,4 @@
-import {
-  isSanFranciscoProfile,
-  profileMentionsEdm,
-  SAN_FRANCISCO_VENUE_HINTS,
-} from "./sf-edm";
+import { isSanFranciscoProfile, SAN_FRANCISCO_VENUE_HINTS } from "./sf-edm";
 import type { NormalizedEvent, TasteProfile } from "./types";
 
 function tokenize(text: string): Set<string> {
@@ -91,11 +87,6 @@ export function scoreEventAgainstProfile(
       score += 4;
       reasons.push(`SF club / venue match (${hit})`);
     }
-  }
-
-  if (profileMentionsEdm(profile) && event.source === "edmtrain") {
-    score += 3;
-    reasons.push("Electronic-focused listing (Edmtrain)");
   }
 
   return { score, matchReasons: [...new Set(reasons)] };
