@@ -1,3 +1,8 @@
+import {
+  isSanFranciscoProfile,
+  profileMentionsEdm,
+  SAN_FRANCISCO_VENUE_HINTS,
+} from "./sf-edm";
 import type { NormalizedEvent, TasteProfile } from "./types";
 
 function tokenize(text: string): Set<string> {
@@ -77,6 +82,20 @@ export function scoreEventAgainstProfile(
       score += 3;
       reasons.push(`In your city (${profile.city})`);
     }
+  }
+
+  if (isSanFranciscoProfile(profile.city)) {
+    const venueHay = (event.venue ?? "").toLowerCase();
+    const hit = SAN_FRANCISCO_VENUE_HINTS.find((h) => venueHay.includes(h));
+    if (hit) {
+      score += 4;
+      reasons.push(`SF club / venue match (${hit})`);
+    }
+  }
+
+  if (profileMentionsEdm(profile) && event.source === "edmtrain") {
+    score += 3;
+    reasons.push("Electronic-focused listing (Edmtrain)");
   }
 
   return { score, matchReasons: [...new Set(reasons)] };

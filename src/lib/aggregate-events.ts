@@ -1,8 +1,21 @@
 import type { EventFetchWarning, NormalizedEvent, TasteProfile } from "./types";
 import { scoreEventAgainstProfile } from "./match";
 import { fetchBandsintownForArtist } from "./sources/bandsintown";
+import {
+  fetchEdmtrainEventsForProfile,
+  fetchEdmtrainSanFranciscoEvents,
+  resolveEdmtrainSanFranciscoLocationId,
+} from "./sources/edmtrain";
 import { fetchSeatGeekEvents } from "./sources/seatgeek";
+import { fetchSongkickMetroEvents } from "./sources/songkick";
 import { fetchTicketmasterEvents } from "./sources/ticketmaster";
+import {
+  isSanFranciscoProfile,
+  profileMentionsEdm,
+  SAN_FRANCISCO_EDM_VENUE_KEYWORDS,
+  SONGKICK_SF_METRO_AREA_ID,
+  textLooksElectronic,
+} from "./sf-edm";
 
 function dayKey(iso: string): string {
   const d = new Date(iso);
@@ -48,6 +61,11 @@ function mergeEvents(lists: NormalizedEvent[][]): NormalizedEvent[] {
   return [...map.values()];
 }
 
+function isVenueKeywordQuery(q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  return SAN_FRANCISCO_EDM_VENUE_KEYWORDS.some((v) => v.toLowerCase() === needle);
+}
+
 export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   events: NormalizedEvent[];
   warnings: EventFetchWarning[];
@@ -76,7 +94,77 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
     return { events: [], warnings: [] };
   }
 
-  for (const q of [...queries].slice(0, 6)) {
+  if (isSanFranciscoProfile(cityQ)) {
+    for (const v of SAN_FRANCISCO_EDM_VENUE_KEYWORDS) queries.add(v);
+  }
+
+  const edmtrainClient = process.env.EDMTRAIN_CLIENT?.trim();
+  if (edmtrainClient) {
+    if (isSanFranciscoProfile(cityQ)) {
+      const locId = await resolveEdmtrainSanFranciscoLocationId(edmtrainClient);
+      if (locId == null) {
+        warnings.push({
+          source: "edmtrain",
+          message: "Could not resolve San Francisco location id (check EDMTRAIN_SF_LOCATION_ID).",
+        });
+      } else {
+        const sf = await fetchEdmtrainSanFranciscoEvents({
+          client: edmtrainClient,
+          locationId: locId,
+        });
+        if (sf.warning) warnings.push(sf.warning);
+        chunks.push(sf.events);
+      }
+    }
+
+    const edmtrainQueries = [...queries]
+      .filter((q) => q.trim().length >= 3 && !isVenueKeywordQuery(q))
+      .slice(0, 4);
+
+    for (const q of edmtrainQueries) {
+      const et = await fetchEdmtrainEventsForProfile({ client: edmtrainClient, eventName: q });
+      if (et.warning) warnings.push(et.warning);
+      chunks.push(et.events);
+    }
+  } else if (profileMentionsEdm(profile)) {
+    warnings.push({
+      source: "edmtrain",
+      message:
+        "Set EDMTRAIN_CLIENT (from edmtrain.com/developer-api) for electronic-focused listings and optional SF venue bundles.",
+    });
+  }
+
+  const songkickKey = process.env.SONGKICK_API_KEY?.trim();
+  if (songkickKey && isSanFranciscoProfile(cityQ)) {
+    const sk = await fetchSongkickMetroEvents({
+      metroAreaId: SONGKICK_SF_METRO_AREA_ID,
+      apiKey: songkickKey,
+      maxPages: 2,
+    });
+    if (sk.warning) warnings.push(sk.warning);
+    const skEvents =
+      profileMentionsEdm(profile) && sk.events.length
+        ? sk.events.filter((e) =>
+            textLooksElectronic([e.title, ...(e.lineup ?? [])].join(" ")),
+          )
+        : sk.events;
+    if (profileMentionsEdm(profile) && sk.events.length && !skEvents.length) {
+      warnings.push({
+        source: "songkick",
+        message:
+          "Songkick metro results were filtered to electronic cues from your taste; broaden genres or narrative if this removed everything.",
+      });
+    }
+    chunks.push(skEvents);
+  } else if (isSanFranciscoProfile(cityQ) && profileMentionsEdm(profile)) {
+    warnings.push({
+      source: "songkick",
+      message:
+        "Set SONGKICK_API_KEY to pull the broader Bay Area calendar (metro 26330) alongside club-specific searches.",
+    });
+  }
+
+  for (const q of [...queries].slice(0, 8)) {
     const tm = await fetchTicketmasterEvents({
       keyword: q,
       countryCode: country,
@@ -89,9 +177,11 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
     if (sg.warning) warnings.push(sg.warning);
     chunks.push(sg.events);
 
-    const bit = await fetchBandsintownForArtist(q);
-    if (bit.warning) warnings.push(bit.warning);
-    chunks.push(bit.events);
+    if (!isVenueKeywordQuery(q)) {
+      const bit = await fetchBandsintownForArtist(q);
+      if (bit.warning) warnings.push(bit.warning);
+      chunks.push(bit.events);
+    }
   }
 
   const merged = mergeEvents(chunks);
