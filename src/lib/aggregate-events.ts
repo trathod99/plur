@@ -1,14 +1,6 @@
 import type { EventFetchWarning, NormalizedEvent, TasteProfile } from "./types";
 import { scoreEventAgainstProfile } from "./match";
 import { nineteenHzUrlsForProfile, scrape19hzCalendar } from "./scrape/19hz";
-import { scrapeEventbriteDiscoverPage } from "./scrape/eventbrite-ld";
-import { eventbritePlaceSegmentsForProfile } from "./scrape/place-slugs";
-import {
-  isSanFranciscoProfile,
-  profileMentionsEdm,
-  SAN_FRANCISCO_EVENTBRITE_VENUE_SLUGS,
-  textLooksElectronic,
-} from "./sf-edm";
 
 function dayKey(iso: string): string {
   const d = new Date(iso);
@@ -54,14 +46,6 @@ function mergeEvents(lists: NormalizedEvent[][]): NormalizedEvent[] {
   return [...map.values()];
 }
 
-function slugifyKeyword(q: string): string {
-  return q
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   events: NormalizedEvent[];
   warnings: EventFetchWarning[];
@@ -69,95 +53,20 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   const warnings: EventFetchWarning[] = [];
   const chunks: NormalizedEvent[][] = [];
 
-  const cityQ = profile.city?.trim();
-  const segments = eventbritePlaceSegmentsForProfile(profile);
-  const sf = isSanFranciscoProfile(cityQ);
-
-  const queries = new Set<string>();
-  for (const a of profile.favoriteArtists) {
-    const t = a.trim();
-    if (t) queries.add(t);
-  }
-  for (const g of profile.genres) {
-    const t = g.trim();
-    if (t) queries.add(t);
-  }
-  const narr = profile.narrative.trim();
-  if (narr.length >= 3) queries.add(narr.slice(0, 80));
-
-  if (queries.size === 0 && cityQ) queries.add(`${cityQ} music`);
-
-  if (queries.size === 0) {
+  const urls = nineteenHzUrlsForProfile(profile);
+  if (!urls.length) {
     warnings.push({
-      source: "eventbrite",
+      source: "19hz",
       message:
-        "No keyword seeds for Eventbrite (add artists, genres, notes, or home city). 19hz and other sources may still run.",
+        "No 19hz calendar applies to this profile. Set city to San Francisco, Oakland, Berkeley, San Jose, Sacramento, Houston, or Bay Area—or add electronic genre cues with country US for the Bay Area listing.",
     });
+    return { events: [], warnings };
   }
 
-  const segmentList =
-    segments.length > 0 ? segments : (profileMentionsEdm(profile) ? ["united-states"] : []);
-
-  if (!segmentList.length) {
-    warnings.push({
-      source: "eventbrite",
-      message:
-        "Set home city (e.g. San Francisco) or mention electronic genres in your taste so we can pick a regional Eventbrite browse path to scrape.",
-    });
-  }
-
-  for (const hz of nineteenHzUrlsForProfile(profile)) {
+  for (const hz of urls) {
     const hzPage = await scrape19hzCalendar({ url: hz.url, sourceLabel: hz.label });
     if (hzPage.warning) warnings.push(hzPage.warning);
     chunks.push(hzPage.events);
-  }
-
-  if (segmentList.length) {
-    for (const seg of segmentList) {
-      const music = await scrapeEventbriteDiscoverPage({
-        url: `https://www.eventbrite.com/d/${seg}/music--events/`,
-        sourceLabel: `${seg}-music`,
-      });
-      if (music.warning) warnings.push(music.warning);
-      const rows =
-        profileMentionsEdm(profile) && music.events.length
-          ? music.events.filter((e) => textLooksElectronic([e.title, e.venue ?? ""].join(" ")))
-          : music.events;
-      if (profileMentionsEdm(profile) && music.events.length && !rows.length) {
-        warnings.push({
-          source: "eventbrite",
-          message: `${seg}-music: all rows were filtered out as non-electronic; broaden your taste cues.`,
-        });
-      }
-      chunks.push(rows);
-    }
-
-    if (sf) {
-      for (const slug of SAN_FRANCISCO_EVENTBRITE_VENUE_SLUGS) {
-        const page = await scrapeEventbriteDiscoverPage({
-          url: `https://www.eventbrite.com/d/ca--san-francisco/${slug}/events/`,
-          sourceLabel: `sf-venue-${slug}`,
-        });
-        if (page.warning) warnings.push(page.warning);
-        chunks.push(page.events);
-      }
-    }
-
-    const keywordSegments = segmentList.slice(0, 3);
-    if (queries.size) {
-      for (const q of [...queries].slice(0, 6)) {
-        const slug = slugifyKeyword(q);
-        if (slug.length < 2) continue;
-        for (const seg of keywordSegments) {
-          const page = await scrapeEventbriteDiscoverPage({
-            url: `https://www.eventbrite.com/d/${seg}/${encodeURIComponent(slug)}/events/`,
-            sourceLabel: `${seg}-q-${slug}`,
-          });
-          if (page.warning) warnings.push(page.warning);
-          chunks.push(page.events);
-        }
-      }
-    }
   }
 
   const merged = mergeEvents(chunks);

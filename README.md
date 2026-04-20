@@ -1,6 +1,6 @@
 # plur
 
-Live music radar: save a free-form taste profile, then **scrape** public Eventbrite discover pages (JSON-LD embedded in HTML), merge duplicates, and rank matches with dates and prices when the listing exposes them.
+Live music radar: save a free-form taste profile, then scrape **[19hz.info](https://19hz.info)** regional event tables (server-rendered HTML), dedupe rows, and rank matches with dates and price hints when the table includes them.
 
 ## Run locally
 
@@ -23,7 +23,13 @@ npm run plur -- events list --limit 20
 npm run plur -- events list --json
 ```
 
+## Which calendars load
+
+- **Bay Area** (`eventlisting_BayArea.php`): San Francisco, Oakland, Berkeley, San Jose, Sacramento, Napa, Sonoma, “Bay Area”, or US profiles whose taste mentions electronic genres.
+- **Houston** (`eventlisting_Houston.php`): when home city includes Houston.
+
 ## Scraping notes
 
-- Sources are **HTML-only** (no API keys). Listings come from **Eventbrite** discover pages (JSON-LD) and **[19hz.info](https://19hz.info)** regional calendars (Bay Area / Houston when your profile matches, or URLs in `NINETEEN_HZ_URLS`). The default fetch uses a small `Plur` User-Agent; set `SCRAPE_USER_AGENT` in `.env.local` if a site blocks the default string.
-- Respect each site’s terms, rate limits, and robots guidance for your deployment. The app issues a modest number of GETs per refresh (19hz + regional Eventbrite browse + keyword pages + optional SF venue pages).
+- Only **19hz** is used: stable table markup, no JS-rendered discovery pages.
+- Optional `SCRAPE_USER_AGENT` in `.env.local` if requests are blocked.
+- Respect 19hz’s terms and robots guidance for your deployment.

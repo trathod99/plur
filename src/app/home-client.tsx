@@ -109,7 +109,7 @@ export default function HomeClient({ initialProfile }: Props) {
       setWarnings(data.warnings);
       if (data.events.length === 0) {
         setMessage(
-          "No scored matches yet. Add favorite artists or notes, configure API keys, then try again.",
+          "No scored matches yet. Set home city (e.g. San Francisco or Houston), add genres or artists, or check warnings if 19hz did not apply.",
         );
       } else {
         setMessage(`Found ${data.events.length} suggestions (deduped across sources).`);
@@ -131,10 +131,10 @@ export default function HomeClient({ initialProfile }: Props) {
           Track your taste, discover shows
         </h1>
         <p className="max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-          Describe how you like to dance and what you chase on lineups. The app scrapes public Eventbrite
-          discover pages (structured data embedded in HTML), the Bay Area calendar on 19hz.info, merges
-          duplicates, and ranks what lines up with your profile—including dates and ticket prices when
-          listings include them.
+          Describe how you like to dance and what you chase on lineups. The app scrapes the regional
+          calendars on 19hz.info (Bay Area or Houston, depending on your home city and taste), merges
+          duplicates, and ranks what lines up with your profile—including dates and price hints from the
+          listing table when present.
         </p>
       </header>
 
@@ -208,12 +208,12 @@ export default function HomeClient({ initialProfile }: Props) {
         <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-6 dark:border-zinc-800 dark:bg-zinc-900/40">
           <h2 className="text-lg font-semibold">Recommendations</h2>
           <p className="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-            No API keys: recommendations come from <strong>scraping</strong> Eventbrite and 19hz HTML. If a page returns empty
-            results or blocks the request, warnings list what failed. Optional{" "}
+            Recommendations come only from <strong>19hz.info</strong> HTML tables (no third-party listing
+            sites that often block bots). If nothing loads, check warnings—usually city/country does not
+            match a known calendar. Optional{" "}
             <code className="rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800">SCRAPE_USER_AGENT</code>{" "}
             in <code className="rounded bg-zinc-200 px-1 py-0.5 text-xs dark:bg-zinc-800">.env.local</code> can
-            help with picky CDNs. Set home city to <strong>San Francisco</strong> to add Bay Area browse
-            paths plus dedicated Eventbrite pages for local clubs.
+            help if fetches are blocked.
           </p>
           <button
             type="button"

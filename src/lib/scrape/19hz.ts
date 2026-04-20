@@ -178,12 +178,5 @@ export function nineteenHzUrlsForProfile(profile: TasteProfile): { url: string; 
     out.set(HOUSTON_URL, { url: HOUSTON_URL, label: "houston" });
   }
 
-  const extra = process.env.NINETEEN_HZ_URLS?.trim();
-  if (extra) {
-    for (const part of extra.split(/[,;\s]+/).filter(Boolean)) {
-      if (part.startsWith("http")) out.set(part, { url: part, label: "custom" });
-    }
-  }
-
   return [...out.values()];
 }
