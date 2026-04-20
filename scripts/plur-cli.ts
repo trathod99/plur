@@ -39,8 +39,8 @@ function usage(): never {
 Usage:
   npx tsx scripts/plur-cli.ts profile show
   npx tsx scripts/plur-cli.ts profile set [--narrative TEXT] [--artists CSV] [--genres CSV]
-                         [--city CITY] [--country CC]
-  npx tsx scripts/plur-cli.ts events list [--json] [--limit N]
+                         [--append-genres CSV] [--city CITY] [--country CC]
+  npx tsx scripts/plur-cli.ts events list [--json] [--limit N] [--compact]
 
 Environment:
   PLUR_DATA_DIR   Directory containing profile.json (default: ./data)
@@ -75,18 +75,38 @@ async function cmdProfileShow(): Promise<void> {
   console.log(JSON.stringify(p, null, 2));
 }
 
+function mergeUniqueStrings(base: string[], add: string[]): string[] {
+  const seen = new Set(base.map((s) => s.toLowerCase()));
+  const out = [...base];
+  for (const s of add) {
+    const t = s.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
 async function cmdProfileSet(args: string[]): Promise<void> {
   const existing = await readProfile();
   const narrative = pickFlag(args, "--narrative") ?? existing.narrative;
   const artistsRaw = pickFlag(args, "--artists");
   const genresRaw = pickFlag(args, "--genres");
+  const appendGenresRaw = pickFlag(args, "--append-genres");
   const city = pickFlag(args, "--city");
   const country = pickFlag(args, "--country");
+
+  let genres = genresRaw !== undefined ? splitCsv(genresRaw) : [...existing.genres];
+  if (appendGenresRaw !== undefined) {
+    genres = mergeUniqueStrings(genres, splitCsv(appendGenresRaw));
+  }
 
   const profile: TasteProfile = {
     narrative,
     favoriteArtists: artistsRaw !== undefined ? splitCsv(artistsRaw) : existing.favoriteArtists,
-    genres: genresRaw !== undefined ? splitCsv(genresRaw) : existing.genres,
+    genres,
     city: city !== undefined ? city || undefined : existing.city,
     country: country !== undefined ? country || undefined : existing.country,
     updatedAt: new Date().toISOString(),
@@ -96,8 +116,20 @@ async function cmdProfileSet(args: string[]): Promise<void> {
   console.log(JSON.stringify(profile, null, 2));
 }
 
+function formatPriceLine(e: { pricing?: { currency?: string; min?: number; max?: number; label?: string } }): string {
+  const p = e.pricing;
+  if (!p) return "—";
+  if (p.min != null) {
+    const span =
+      p.max != null && p.max !== p.min ? `${p.min} – ${p.max}` : String(p.min);
+    return `${p.currency} ${span}`;
+  }
+  return p.label ?? "—";
+}
+
 async function cmdEventsList(args: string[]): Promise<void> {
   const asJson = hasFlag(args, "--json");
+  const compact = hasFlag(args, "--compact");
   const limitRaw = pickFlag(args, "--limit");
   const limit = limitRaw ? Math.max(1, Number.parseInt(limitRaw, 10) || 80) : 80;
 
@@ -121,20 +153,48 @@ async function cmdEventsList(args: string[]): Promise<void> {
     return;
   }
 
-  for (const e of slice) {
-    const when = new Date(e.start).toLocaleString();
+  if (!compact) {
+    console.log(`— ${slice.length} event${slice.length === 1 ? "" : "s"} —\n`);
+  }
+
+  for (let i = 0; i < slice.length; i += 1) {
+    const e = slice[i]!;
+    const when = new Date(e.start).toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
     const where = [e.venue, e.city].filter(Boolean).join(" · ") || "—";
-    const price =
-      e.pricing?.min != null
-        ? `${e.pricing.currency} ${e.pricing.min}${e.pricing.max != null ? `–${e.pricing.max}` : ""}`
-        : (e.pricing?.label ?? "—");
+    const price = formatPriceLine(e);
     const link = e.url ?? "";
-    console.log(
-      `${when}\tscore ${e.score}\t${e.source}\t${e.title}\t${where}\t${price}${link ? `\t${link}` : ""}`,
-    );
-    if (e.matchReasons.length) {
-      console.log(`  → ${e.matchReasons.join("; ")}`);
+
+    if (compact) {
+      console.log(
+        `${when}\tscore ${e.score}\t${e.source}\t${e.title}\t${where}\t${price}${link ? `\t${link}` : ""}`,
+      );
+      if (e.matchReasons.length) {
+        console.log(`  → ${e.matchReasons.join("; ")}`);
+      }
+      continue;
     }
+
+    const n = i + 1;
+    console.log(`${n}. ${e.title}`);
+    console.log(`   When:   ${when}`);
+    console.log(`   Where:  ${where}`);
+    console.log(`   Price:  ${price}`);
+    console.log(`   Score:  ${e.score}  ·  ${e.source}`);
+    if (link) console.log(`   Link:   ${link}`);
+    if (e.lineup?.length) {
+      console.log(`   Tags:   ${e.lineup.join(", ")}`);
+    }
+    if (e.matchReasons.length) {
+      console.log(`   Match:  ${e.matchReasons.join(" · ")}`);
+    }
+    console.log("");
   }
 }
 

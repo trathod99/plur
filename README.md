@@ -19,7 +19,9 @@ Same profile file and the same `gatherAndScoreEvents` pipeline as the web app:
 ```bash
 npm run plur -- profile show
 npm run plur -- profile set --city "San Francisco" --country US --genres "techno, house" --artists "Charlotte de Witte"
+npm run plur -- profile set --append-genres "dubstep, riddim, rnb"
 npm run plur -- events list --limit 20
+npm run plur -- events list --limit 20 --compact
 npm run plur -- events list --json
 ```
 

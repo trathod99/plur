@@ -38,6 +38,9 @@ const EDM_KEYWORDS = [
   "garage",
   "ukg",
   "dubstep",
+  "riddim",
+  "rnb",
+  "r&b",
   "hardstyle",
   "club",
 ];
