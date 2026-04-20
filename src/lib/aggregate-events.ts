@@ -82,8 +82,10 @@ export async function gatherAndScoreEvents(profile: TasteProfile): Promise<{
   const ranked = scored
     .filter((e) => (maxScore === 0 ? true : e.score >= threshold))
     .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return new Date(a.start).getTime() - new Date(b.start).getTime();
+      const ta = new Date(a.start).getTime();
+      const tb = new Date(b.start).getTime();
+      if (ta !== tb) return ta - tb;
+      return b.score - a.score;
     });
 
   const upcoming = ranked.filter((e) => {
